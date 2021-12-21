@@ -6,7 +6,7 @@ import pandas as pd
 
 def main():
     metric_list = ['Accuracy', 'MRR5', 'HIT5', 'NDCG5']
-    task_list = ['T1', 'T2']
+    task_list = ['T1', 'T2', 'T3', 'T4']
     mode_list = ['pretrain', 'finetune']
 
     for metric in (metric_list):
