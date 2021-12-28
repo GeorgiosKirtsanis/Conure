@@ -63,10 +63,8 @@ def main(dataset, datapath):
     # 1024 to be the biggest batch size for tunning
     if args.dataset == 'T1':
         limit = 363520
-        limit = 10
     elif args.dataset == 'T2':
         limit = 348160
-        limit = 10
     elif args.dataset == 'T3':
         limit = 61440
     elif args.dataset == 'T4':
@@ -99,7 +97,7 @@ def main(dataset, datapath):
 
 
 if __name__ == '__main__':
-    main('T1', 'Data/Session/original_desen_pretrain_2.csv')
-    main('T2', 'Data/Session/original_desen_finetune_click_nouserID_2.csv')
-    # main('T3', 'Data/Session/original_desen_finetune_like_nouserID.csv')
-    # main('T4', 'Data/Session/original_desen_gender.csv')
+    main('T1', 'Data/Session/original_desen_pretrain.csv')
+    main('T2', 'Data/Session/original_desen_finetune_click_nouserID.csv')
+    main('T3', 'Data/Session/original_desen_finetune_like_nouserID.csv')
+    main('T4', 'Data/Session/original_desen_gender.csv')
