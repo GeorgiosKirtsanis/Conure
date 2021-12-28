@@ -35,10 +35,6 @@ def main(dataset, datapath):
     print("Randomly shuffling data...")
     shuffle_indices = np.random.permutation(np.arange(len(all_samples)))
     all_samples = all_samples[shuffle_indices]
-    print(all_samples[0])
-    print(all_samples[10])
-    print(all_samples[20])
-    print(all_samples[30])
 
     # Create Directory
     path = os.path.join('data', dataset)
