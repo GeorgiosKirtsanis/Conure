@@ -3,12 +3,11 @@ import data_loader_rand as data_loader
 import generator_prune as generator_recsys
 import data_analysis
 import metric_evaluation
-import math
-import time
 import numpy as np
 import argparse
 import config
 import sys
+import os
 
 
 def random_neq(l, r, s):
@@ -36,13 +35,13 @@ def random_negs(l,r,no,s):
     return negs
 
 
-def main():
+def main(path, case, extention, prune_percentage):
     parser = argparse.ArgumentParser()
     parser.add_argument('--top_k', type=int, default=1,
                         help='Sample from top k predictions')
     parser.add_argument('--beta1', type=float, default=0.9,
                         help='hyperpara-Adam')
-    parser.add_argument('--datapath', type=str, default='Data/Session/original_desen_gender_3.csv',
+    parser.add_argument('--datapath', type=str, default='Data/Session/original_desen_gender_2.csv',
                         help='data path')
     parser.add_argument('--datapath_index', type=str, default='Data/Session/index.csv',
                         help='data path')
@@ -62,8 +61,14 @@ def main():
                         help='is the padding token in the beggining of the sequence')
     parser.add_argument('--negtive_samples', type=int, default='1',
                         help='the number of negative examples for each positive one')
-
+    parser.add_argument('--path', type=str, default=path)
+    parser.add_argument('--case', type=int, default=case)
+    parser.add_argument('--extention', type=int, default=extention)
+    parser.add_argument('--prune_percentage', type=float, default=prune_percentage)
     args = parser.parse_args()
+
+    # Resetting graph
+    tf.reset_default_graph()
 
     dl = data_loader.Data_Loader({'model_type': 'generator', 'dir_name': args.datapath,'dir_name_index': args.datapath_index})
     
@@ -77,10 +82,9 @@ def main():
     negtive_samples = args.negtive_samples
 
     #Doing Data analysis
-    data_analysis.Data_Analysis({'data': all_samples,'datapath': args.datapath, 'task': 'T4'})
+    data_analysis.Data_Analysis({'data': all_samples,'datapath': args.datapath, 'task': 'T4', 'path': args.path})
 
     # Randomly shuffle data
-    np.random.seed(10)
     shuffle_indices = np.random.permutation(np.arange(len(all_samples)))
     all_samples = all_samples[shuffle_indices]
 
@@ -96,8 +100,8 @@ def main():
         'dilations': [1,4,1,4,1,4,1,4,],
         'kernel_size': 3,
         'learning_rate':0.001,
-        'batch_size':256,
-        'iterations':5,
+        'batch_size':10,
+        'iterations':1,
         'has_positionalembedding': args.has_positionalembedding,
         'max_position': args.max_position,
         'is_negsample':True, # False denotes using full softmax
@@ -134,7 +138,7 @@ def main():
 
     sess.run(init)
     saver = tf.train.Saver(variables_to_restore)
-    saver.restore(sess, "Data/Models/generation_model_finetune_t3/model_nextitnet_transfer_pretrain.ckpt")
+    saver.restore(sess, os.path.join(path, 'T3', 'finetune') + "/model_nextitnet_transfer.ckpt")
 
     source_item_embedding = itemrec.dilate_input
     source_item_embedding = tf.reduce_mean(source_item_embedding[:, -1:, :], 1)  # use the last token
@@ -169,7 +173,7 @@ def main():
         loss =  target_loss
     
     optimizer = tf.train.AdamOptimizer(model_para['learning_rate'], beta1=args.beta1, name='Adam2').minimize(loss, var_list=[softmax_var, weight])
-    itemrec.save_impwei(mask_var,weight,taskID,reuse=True)  # save important weight
+    itemrec.save_impwei(mask_var,weight,taskID,case, extention, prune_percentage, reuse=True)  # save important weight
 
     unitialized_vars = []
     for var in tf.global_variables():
@@ -229,11 +233,8 @@ def main():
             batch_no += 1
             numIters += 1
 
-    # Print Metrics Matrix
-    #print("accuracy:", accuracy)
-
     # Metrics evaluation
-    metric_evaluation.Metric_Evaluation({'metric': 'Accuracy', 'metric_values': accuracy, 'iters': iters, 'datapath': args.datapath, 'task': 'T4', 'mode': 'pretrain'})
+    metric_evaluation.Metric_Evaluation({'metric': 'Accuracy', 'metric_values': accuracy, 'iters': iters, 'datapath': args.datapath, 'task': 'T4', 'mode': 'pretrain', 'path': args.path})
 
     # Save the masking for t4
     _mask_val_list = sess.run(itemrec.mask_val_list_task)
@@ -261,9 +262,9 @@ def main():
     allable_vars = tf.all_variables()
 
     saver_ft = tf.train.Saver()
-    save_path = saver_ft.save(sess,"Data/Models/generation_model_t4/model_nextitnet_transfer_pretrain.ckpt".format(iter, numIters))
+    save_path = saver_ft.save(sess, os.path.join(path, 'T4', 'pretrain') + "/model_nextitnet_transfer.ckpt".format(iter, numIters))
     print("Save models done!")
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[4])

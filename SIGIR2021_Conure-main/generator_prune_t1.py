@@ -101,7 +101,7 @@ class NextItNet_Decoder:
         self.g_probs = tf.reshape(probs_flat, [-1, 1, model_para['item_size']])
         self.top_k = tf.nn.top_k(self.g_probs[:, -1], k=5, name='top-k')
 
-    def save_impwei(self, reuse=False):
+    def save_impwei(self, case, extention, prune_percentage, reuse=False):
         if reuse:
             tf.get_variable_scope().reuse_variables()
 
@@ -109,44 +109,113 @@ class NextItNet_Decoder:
         trainable_vars = tf.trainable_variables()
         variables_to_restore = [v for v in trainable_vars if v.name.find("weight") != -1]
         self.mask_val_list = []
+        self.dilated_conv_list = []
+        self.dilated_conv_norm_list = []
+        self.dilated_conv_onedim_list = []
+        self.top_k_dilated_conv_list = []
 
         kernel_num = 1 * self.model_para['kernel_size'] * self.embedding_width * self.embedding_width
         cutoff_rank = tf.cast((1.0 - config.maskp_task1) * kernel_num, tf.int32)
         graph = tf.get_default_graph()
 
+
         with tf.variable_scope("mask_filter", reuse=tf.AUTO_REUSE):
             for layer_id, dilation in enumerate(self.model_para['dilations']):
                 mask_name = "mask_val_layer_{}_{}".format(layer_id, dilation)
-                
 
                 dilated_conv1 = variables_to_restore[2 * layer_id]
                 dilated_conv1_norm = tf.abs(dilated_conv1)
                 one = tf.ones_like(dilated_conv1_norm)
                 zero = tf.zeros_like(dilated_conv1_norm)
                 dilated_conv1_onedim = tf.reshape(dilated_conv1_norm, [kernel_num])
-                top_k_dilated_conv1 = tf.nn.top_k(dilated_conv1_onedim, cutoff_rank + 1).values[cutoff_rank]  # e.g., 2.3
-                mask_dilated_conv1 = tf.where(dilated_conv1_norm < top_k_dilated_conv1, x=zero, y=one)
 
-                ## Flashing technique applied on mask. Only on T1, T2, T3. 
-                ## It's not needed to flash T4, since it's the last task.
-                # flash_percentage = 0.1
-                # prob = np.random.rand()
-                # mask_dilated_conv1_flashed = tf.where(prob < flash_percentage, x=zero, y=mask_dilated_conv1)
+                if case == 0:
+                    top_k_dilated_conv1 = tf.nn.top_k(dilated_conv1_onedim, cutoff_rank + 1).values[cutoff_rank]
+                    mask_dilated_conv1 = tf.where(dilated_conv1_norm < top_k_dilated_conv1, x=zero, y=one)
+
+                elif case == 1:
+                    top_k_dilated_conv1 = tf.nn.top_k(dilated_conv1_onedim, cutoff_rank + 1 + extention).values[cutoff_rank + extention]
+                    mask_dilated_conv1_important = tf.where(dilated_conv1_norm < top_k_dilated_conv1, x=zero, y=one)
+                    random_mask = tf.random_uniform(shape = dilated_conv1.shape)
+                    mask_dilated_conv1 = tf.where(random_mask < prune_percentage, x=zero, y=mask_dilated_conv1_important)
+
+                elif case == 2:
+                    top_k_dilated_conv1_high_important = tf.nn.top_k(dilated_conv1_onedim, cutoff_rank + 1 + extention).values[cutoff_rank]
+                    mask_dilated_conv1_high_important = tf.where(dilated_conv1_norm < top_k_dilated_conv1_high_important, x=zero, y=one)
+                    
+                    top_k_dilated_conv1_medium_important = tf.nn.top_k(dilated_conv1_onedim, cutoff_rank + 1 + extention).values[cutoff_rank + extention]
+                    mask_dilated_conv1_medium_important = tf.where(((dilated_conv1_norm < top_k_dilated_conv1_high_important) & (dilated_conv1_norm >= top_k_dilated_conv1_medium_important)), x=one, y=zero)
+                    random_mask = tf.random_uniform(shape = dilated_conv1.shape)
+                    mask_dilated_conv1_medium_important_pruned = tf.where(random_mask < prune_percentage, x=zero, y=mask_dilated_conv1_medium_important)
+
+                    top_k_dilated_conv1 = mask_dilated_conv1_medium_important
+                    mask_dilated_conv1 = tf.add(mask_dilated_conv1_high_important, mask_dilated_conv1_medium_important_pruned)
+
+                elif case == 3:
+                    top_k_dilated_conv1_high_important = tf.nn.top_k(dilated_conv1_onedim, cutoff_rank + 1 + extention).values[cutoff_rank - 1]
+                    mask_dilated_conv1_high_important = tf.where(dilated_conv1_norm < top_k_dilated_conv1_high_important, x=zero, y=one)
+
+                    top_k_dilated_conv1_medium_important = tf.nn.top_k(dilated_conv1_onedim, cutoff_rank + 1 + extention).values[cutoff_rank + extention]
+                    mask_dilated_conv1_medium_important = tf.where(((dilated_conv1_norm < top_k_dilated_conv1_high_important) & (dilated_conv1_norm >= top_k_dilated_conv1_medium_important)), x=one, y=zero)
+                    random_mask = tf.random_uniform(shape = dilated_conv1.shape)
+                    mask_dilated_conv1_medium_important_pruned = tf.where(random_mask < prune_percentage, x=zero, y=mask_dilated_conv1_medium_important)
+
+                    top_k_dilated_conv1 = mask_dilated_conv1_medium_important
+                    mask_dilated_conv1 = tf.add(mask_dilated_conv1_high_important, mask_dilated_conv1_medium_important_pruned)
+                    
+                self.dilated_conv_list.append(dilated_conv1)
+                self.dilated_conv_norm_list.append(dilated_conv1_norm)
+                self.dilated_conv_onedim_list.append(dilated_conv1_onedim)
+                self.top_k_dilated_conv_list.append(top_k_dilated_conv1)
+                self.mask_val_list.append(mask_dilated_conv1)
+
 
                 dilated_conv2 = variables_to_restore[2 * layer_id + 1]
                 dilated_conv2_norm = tf.abs(dilated_conv2)
                 dilated_conv2_onedim = tf.reshape(dilated_conv2_norm, [kernel_num])
-                top_k_dilated_conv2 = tf.nn.top_k(dilated_conv2_onedim, cutoff_rank + 1).values[cutoff_rank]  # e.g., 2.3
-                mask_dilated_conv2 = tf.where(dilated_conv2_norm < top_k_dilated_conv2, x=zero, y=one)
+                
+                if case == 0:
+                    top_k_dilated_conv2 = tf.nn.top_k(dilated_conv2_onedim, cutoff_rank + 1).values[cutoff_rank]
+                    mask_dilated_conv2 = tf.where(dilated_conv2_norm < top_k_dilated_conv2, x=zero, y=one)
 
-                ## Flush technique applied on mask. Only on T1, T2, T3. 
-                ## It's not needed to flash T4, since it's the last task.
-                # flash_percentage = 0.1
-                # prob = np.random.rand()
-                # mask_dilated_conv2_flashed = tf.where(prob < flash_percentage, x=zero, y=mask_dilated_conv2)
+                elif case == 1:
+                    top_k_dilated_conv2 = tf.nn.top_k(dilated_conv2_onedim, cutoff_rank + 1 + extention).values[cutoff_rank + extention]
+                    mask_dilated_conv2_important = tf.where(dilated_conv2_norm < top_k_dilated_conv2, x=zero, y=one)
+                    random_mask = tf.random_uniform(shape = dilated_conv2.shape)
+                    mask_dilated_conv2 = tf.where(random_mask < prune_percentage, x=zero, y=mask_dilated_conv2_important)
 
-                self.mask_val_list.append(mask_dilated_conv1)
+                elif case == 2:
+                    top_k_dilated_conv2_high_important = tf.nn.top_k(dilated_conv2_onedim, cutoff_rank + 1 + extention).values[cutoff_rank]
+                    mask_dilated_conv2_high_important = tf.where(dilated_conv2_norm < top_k_dilated_conv2_high_important, x=zero, y=one)
+                    
+                    top_k_dilated_conv2_medium_important = tf.nn.top_k(dilated_conv2_onedim, cutoff_rank + 1 + extention).values[cutoff_rank + extention]
+                    mask_dilated_conv2_medium_important = tf.where(((dilated_conv2_norm < top_k_dilated_conv2_high_important) & (dilated_conv2_norm >= top_k_dilated_conv2_medium_important)), x=one, y=zero)
+                    random_mask = tf.random_uniform(shape = dilated_conv2.shape)
+                    mask_dilated_conv2_medium_important_pruned = tf.where(random_mask < prune_percentage, x=zero, y=mask_dilated_conv2_medium_important)
+
+                    top_k_dilated_conv2 = mask_dilated_conv2_medium_important
+                    mask_dilated_conv2 = tf.add(mask_dilated_conv2_high_important, mask_dilated_conv2_medium_important_pruned)
+
+                elif case == 3:
+                    top_k_dilated_conv2_high_important = tf.nn.top_k(dilated_conv2_onedim, cutoff_rank + 1 + extention).values[cutoff_rank - 1]
+                    mask_dilated_conv2_high_important = tf.where(dilated_conv2_norm < top_k_dilated_conv2_high_important, x=zero, y=one)
+
+                    top_k_dilated_conv2_medium_important = tf.nn.top_k(dilated_conv2_onedim, cutoff_rank + 1 + extention).values[cutoff_rank + extention]
+                    mask_dilated_conv2_medium_important = tf.where(((dilated_conv2_norm < top_k_dilated_conv2_high_important) & (dilated_conv2_norm >= top_k_dilated_conv2_medium_important)), x=one, y=zero)
+                    random_mask = tf.random_uniform(shape = dilated_conv2.shape)
+                    mask_dilated_conv2_medium_important_pruned = tf.where(random_mask < prune_percentage, x=zero, y=mask_dilated_conv2_medium_important)
+
+                    top_k_dilated_conv2 = mask_dilated_conv2_medium_important
+                    mask_dilated_conv2 = tf.add(mask_dilated_conv2_high_important, mask_dilated_conv2_medium_important_pruned)
+                
+                self.dilated_conv_list.append(dilated_conv2)
+                self.dilated_conv_norm_list.append(dilated_conv2_norm)
+                self.dilated_conv_onedim_list.append(dilated_conv2_onedim)
+                self.top_k_dilated_conv_list.append(top_k_dilated_conv2)
                 self.mask_val_list.append(mask_dilated_conv2)
+                
+                
+                
 
     def embedding(self, inputs, max_position, num_units, zero_pad=True, scale=True, l2_reg=0.0, scope="embedding", with_t=False):
         with tf.variable_scope(scope):

@@ -13,6 +13,7 @@ class Metric_Evaluation:
         datapath = options['datapath']
         task = options['task']
         mode = options['mode']
+        path = options['path']
         
         #Creating Figure
         fig = plt.figure(figsize = (10, 5))
@@ -22,19 +23,14 @@ class Metric_Evaluation:
         title = task + " " + mode + ' | ' + metric + " per step for test set of " + datapath
         plt.title(title)
 
-        #Creating Dictionaries and files
-        for iteration in range(1, 6):
-            script_dir = os.path.dirname(__file__)
-            results_dir = os.path.join(script_dir, 'Data/Results/' + str(iteration) + '/' + task + '/' + mode + '/' + metric + '/')
-            if not os.path.isdir(results_dir):
-                os.makedirs(results_dir)
+        results_dir = os.path.join(path, task, mode, 'metrics')
+        if not os.path.isdir(results_dir):
+            os.makedirs(results_dir)
+        full_file_name = os.path.join(results_dir, metric)
 
-                sample_file_name = task + '_' + mode + '_' + metric
-                full_file_name = results_dir + sample_file_name
-
-                #Saving Figure
-                plt.savefig(full_file_name)
-                #Saving Array to csv
-                df = pd.DataFrame(metric_values).T
-                df.to_csv(full_file_name + '.csv', index=False, header=False)
-                break
+        #Saving Figure
+        plt.savefig(full_file_name)
+        #Saving Array to csv
+        df = pd.DataFrame(metric_values).T
+        df.to_csv(full_file_name + '.csv', index=False, header=False)
+    

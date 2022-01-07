@@ -3,12 +3,12 @@ import data_loader_neg as data_loader
 import generator_prune_regbig as generator_recsys
 import data_analysis
 import metric_evaluation
-import time
 import math
 import numpy as np
 import argparse
 import config
 import sys
+import os
 
 def random_neq(l, r, s):
     t = np.random.randint(l, r)
@@ -35,13 +35,13 @@ def random_negs(l,r,no,s):
     return negs
 
 
-def main():
+def main(path, case, extention, prune_percentage):
     parser = argparse.ArgumentParser()
     parser.add_argument('--top_k', type=int, default=5,
                         help='Sample from top k predictions')
     parser.add_argument('--beta1', type=float, default=0.9,
                         help='hyperpara-Adam')
-    parser.add_argument('--datapath', type=str, default='Data/Session/original_desen_finetune_like_nouserID_3.csv ',
+    parser.add_argument('--datapath', type=str, default='Data/Session/original_desen_finetune_like_nouserID_2.csv ',
                         help='data path')
     parser.add_argument('--datapath_index', type=str, default='Data/Session/index.csv',
                         help='data path')
@@ -59,10 +59,17 @@ def main():
                         help='whether contains positional embedding before performing cnnn')
     parser.add_argument('--max_position', type=int, default=1000,
                          help='maximum number of for positional embedding, it has to be larger than the sequence lens')
-  
+    parser.add_argument('--path', type=str, default=path)
+    parser.add_argument('--case', type=int, default=case)
+    parser.add_argument('--extention', type=int, default=extention)
+    parser.add_argument('--prune_percentage', type=float, default=prune_percentage)
     args = parser.parse_args()
-    dl = data_loader.Data_Loader({'model_type': 'generator', 'dir_name': args.datapath, 'dir_name_index': args.datapath_index, 'lambdafm_rho': args.rho})
    
+    # Resetting graph
+    tf.reset_default_graph()
+
+    dl = data_loader.Data_Loader({'model_type': 'generator', 'dir_name': args.datapath, 'dir_name_index': args.datapath_index, 'lambdafm_rho': args.rho})
+
     items = dl.item_dict
     items_len = len(items)
     targets = dl.target_dict
@@ -73,10 +80,9 @@ def main():
     all_samples = dl.example
 
     #Doing Data analysis
-    data_analysis.Data_Analysis({'data': all_samples,'datapath': args.datapath, 'task': 'T3'})
+    data_analysis.Data_Analysis({'data': all_samples,'datapath': args.datapath, 'task': 'T3', 'path': args.path})
 
     # Randomly shuffle data
-    np.random.seed(10)
     shuffle_indices = np.random.permutation(np.arange(len(all_samples)))
     all_samples = all_samples[shuffle_indices]
 
@@ -92,8 +98,8 @@ def main():
         'dilations': [1,4,1,4,1,4,1,4,],
         'kernel_size': 3,
         'learning_rate':0.001,
-        'batch_size':256,
-        'iterations':5,
+        'batch_size':10,
+        'iterations':1,
         'has_positionalembedding': args.has_positionalembedding,
         'max_position': args.max_position,
         'is_negsample':True, #False denotes using full softmax
@@ -132,7 +138,8 @@ def main():
 
     sess.run(init)
     saver = tf.train.Saver(variables_to_restore)
-    saver.restore(sess, "Data/Models/generation_model_finetune_t2/model_nextitnet_transfer_pretrain.ckpt")
+    saver.restore(sess, os.path.join(path, 'T2', 'finetune') + "/model_nextitnet_transfer.ckpt")
+    
     source_item_embedding = itemrec.dilate_input
     source_item_embedding = tf.reduce_mean(source_item_embedding[:, -1:, :], 1)  # use the last token
     embedding_size = tf.shape(source_item_embedding)[-1]
@@ -162,7 +169,7 @@ def main():
         loss =  target_loss
 
     optimizer = tf.train.AdamOptimizer(model_para['learning_rate'], beta1=args.beta1, name='Adam2').minimize(loss, var_list=[softmax_var, weight])
-    itemrec.save_impwei(mask_var,weight,taskID,reuse=True)  # save important weight
+    itemrec.save_impwei(mask_var,weight,taskID,case, extention, prune_percentage, reuse=True)  # save important weight
 
     unitialized_vars = []
     for var in tf.global_variables():
@@ -246,18 +253,12 @@ def main():
                    
             batch_no += 1
             numIters += 1
- 
-    # Print Metrics Matrix
-    #print("mrr5:", mrr5)
-    #print("hit5:", hit5)
-    #print("ndcg5:", ndcg5)
-    #print("accuracy:", accuracy)
 
     # Metrics evaluation
-    metric_evaluation.Metric_Evaluation({'metric': 'MRR5', 'metric_values': mrr5, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'pretrain'})
-    metric_evaluation.Metric_Evaluation({'metric': 'HIT5', 'metric_values': hit5, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'pretrain'})
-    metric_evaluation.Metric_Evaluation({'metric': 'NDCG5', 'metric_values': ndcg5, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'pretrain'})
-    metric_evaluation.Metric_Evaluation({'metric': 'Accuracy', 'metric_values': accuracy, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'pretrain'})
+    metric_evaluation.Metric_Evaluation({'metric': 'MRR5', 'metric_values': mrr5, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'pretrain', 'path' : args.path})
+    metric_evaluation.Metric_Evaluation({'metric': 'HIT5', 'metric_values': hit5, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'pretrain', 'path' : args.path})
+    metric_evaluation.Metric_Evaluation({'metric': 'NDCG5', 'metric_values': ndcg5, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'pretrain', 'path' : args.path})
+    metric_evaluation.Metric_Evaluation({'metric': 'Accuracy', 'metric_values': accuracy, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'pretrain', 'path' : args.path})
 
     # Save the masking for t3
     _mask_val_list = sess.run(itemrec.mask_val_list_task)
@@ -285,15 +286,12 @@ def main():
             unitialized_vars.append(var)
     initialize_op = tf.variables_initializer(unitialized_vars)
     sess.run(initialize_op)
-    # allable_vars = tf.all_variables()
-    # make sure all variables have been intialized, otherwise it will not save the variable
+    
 
     saver_ft = tf.train.Saver()
-    save_path = saver_ft.save(sess,
-                           "Data/Models/generation_model_t3/model_nextitnet_transfer_pretrain.ckpt".format(iter,
-                                                                                                        numIters))
+    save_path = saver_ft.save(sess, os.path.join(path, 'T3', 'pretrain') + "/model_nextitnet_transfer.ckpt".format(iter, numIters))
     print("Save models done!")
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[4])

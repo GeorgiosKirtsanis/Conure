@@ -2,12 +2,12 @@ import tensorflow as tf
 import data_loader_neg as data_loader
 import generator_prune_regbig as generator_recsys
 import metric_evaluation
-import time
 import numpy as np
 import argparse
 import config
 import math
 import sys
+import os
 
 
 def random_neq(l, r, s):
@@ -35,13 +35,13 @@ def random_negs(l,r,no,s):
     return negs
 
 
-def main():
+def main(path):
     parser = argparse.ArgumentParser()
     parser.add_argument('--top_k', type=int, default=5,
                         help='Sample from top k predictions')
     parser.add_argument('--beta1', type=float, default=0.9,
                         help='hyperpara-Adam')
-    parser.add_argument('--datapath', type=str, default='Data/Session/original_desen_finetune_like_nouserID_3.csv ',
+    parser.add_argument('--datapath', type=str, default='Data/Session/original_desen_finetune_like_nouserID_2.csv ',
                         help='data path')
     parser.add_argument('--datapath_index', type=str, default='Data/Session/index.csv',
                         help='data path')
@@ -59,10 +59,13 @@ def main():
                         help='whether contains positional embedding before performing cnnn')
     parser.add_argument('--max_position', type=int, default=1000,
                          help='maximum number of for positional embedding, it has to be larger than the sequence lens')
+    parser.add_argument('--path', type=str, default=path)
     args = parser.parse_args()
 
-    dl = data_loader.Data_Loader({'model_type': 'generator', 'dir_name': args.datapath, 'dir_name_index': args.datapath_index, 'lambdafm_rho': args.rho})
+    # Resetting graph
+    tf.reset_default_graph()
 
+    dl = data_loader.Data_Loader({'model_type': 'generator', 'dir_name': args.datapath, 'dir_name_index': args.datapath_index, 'lambdafm_rho': args.rho})
     items = dl.item_dict
     items_len = len(items)
     targets = dl.target_dict
@@ -73,7 +76,6 @@ def main():
     all_samples = dl.example
 
     # Randomly shuffle data
-    np.random.seed(10)
     shuffle_indices = np.random.permutation(np.arange(len(all_samples)))
     all_samples = all_samples[shuffle_indices]
 
@@ -89,8 +91,8 @@ def main():
         'dilations': [1,4,1,4,1,4,1,4,],
         'kernel_size': 3,
         'learning_rate':0.001,
-        'batch_size':256,
-        'iterations':5,
+        'batch_size':10,
+        'iterations':1,
         'has_positionalembedding': args.has_positionalembedding,
         'max_position': args.max_position,
         'is_negsample':True,
@@ -127,9 +129,9 @@ def main():
 
     sess.run(init)
     saver = tf.train.Saver(variables_to_restore)
-    saver.restore(sess, "Data/Models/generation_model_t3/model_nextitnet_transfer_pretrain.ckpt")
-
+    saver.restore(sess, os.path.join(path, 'T3', 'pretrain') + "/model_nextitnet_transfer.ckpt")
     saver_ft = tf.train.Saver()
+
     source_item_embedding = itemrec.dilate_input
     source_item_embedding = tf.reduce_mean(source_item_embedding[:, -1:, :], 1)  # use the last token
     embedding_size = tf.shape(source_item_embedding)[-1]
@@ -252,13 +254,14 @@ def main():
     #print("accuracy:", accuracy)
 
     # Metrics evaluation
-    metric_evaluation.Metric_Evaluation({'metric': 'MRR5', 'metric_values': mrr5, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'finetune'})
-    metric_evaluation.Metric_Evaluation({'metric': 'HIT5', 'metric_values': hit5, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'finetune'})
-    metric_evaluation.Metric_Evaluation({'metric': 'NDCG5', 'metric_values': ndcg5, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'finetune'})
-    metric_evaluation.Metric_Evaluation({'metric': 'Accuracy', 'metric_values': accuracy, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'finetune'})
+    metric_evaluation.Metric_Evaluation({'metric': 'MRR5', 'metric_values': mrr5, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'finetune', 'path' : args.path})
+    metric_evaluation.Metric_Evaluation({'metric': 'HIT5', 'metric_values': hit5, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'finetune', 'path' : args.path})
+    metric_evaluation.Metric_Evaluation({'metric': 'NDCG5', 'metric_values': ndcg5, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'finetune', 'path' : args.path})
+    metric_evaluation.Metric_Evaluation({'metric': 'Accuracy', 'metric_values': accuracy, 'iters': iters, 'datapath': args.datapath, 'task': 'T3', 'mode': 'finetune', 'path' : args.path})
 
-    save_path = saver_ft.save(sess, "Data/Models/generation_model_finetune_t3/model_nextitnet_transfer_pretrain.ckpt".format(iter, numIters))
+    save_path = saver_ft.save(sess, os.path.join(path, 'T3', 'finetune') + "/model_nextitnet_transfer.ckpt".format(iter, numIters))
     print("Save models done!")
 
+
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1])

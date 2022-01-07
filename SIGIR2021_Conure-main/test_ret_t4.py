@@ -2,11 +2,11 @@ import tensorflow as tf
 import data_loader_rand as data_loader
 import generator_prune as generator_recsys
 import metric_evaluation
-import time
 import numpy as np
 import argparse
 import config
 import sys
+import os
 
 
 def random_neq(l, r, s):
@@ -34,13 +34,13 @@ def random_negs(l,r,no,s):
     return negs
 
 
-def main():
+def main(path):
     parser = argparse.ArgumentParser()
     parser.add_argument('--top_k', type=int, default=1,
                         help='Sample from top k predictions')
     parser.add_argument('--beta1', type=float, default=0.9,
                         help='hyperpara-Adam')
-    parser.add_argument('--datapath', type=str, default='Data/Session/original_desen_gender_3.csv',
+    parser.add_argument('--datapath', type=str, default='Data/Session/original_desen_gender_2.csv',
                         help='data path')
     parser.add_argument('--datapath_index', type=str, default='Data/Session/index.csv',
                         help='data path')
@@ -60,11 +60,13 @@ def main():
                         help='is the padding token in the beggining of the sequence')
     parser.add_argument('--negtive_samples', type=int, default='1',
                         help='the number of negative examples for each positive one')
-
+    parser.add_argument('--path', type=str, default=path)
     args = parser.parse_args()
 
+    # Resetting graph
+    tf.reset_default_graph()
+
     dl = data_loader.Data_Loader({'model_type': 'generator', 'dir_name': args.datapath,'dir_name_index': args.datapath_index})
-    
     items = dl.item_dict
     items_len = len(items)
     targets = dl.target_dict
@@ -75,7 +77,6 @@ def main():
     negtive_samples = args.negtive_samples
 
     # Randomly shuffle data
-    np.random.seed(10)
     shuffle_indices = np.random.permutation(np.arange(len(all_samples)))
     all_samples = all_samples[shuffle_indices]
 
@@ -91,8 +92,8 @@ def main():
         'dilations': [1,4,1,4,1,4,1,4,],
         'kernel_size': 3,
         'learning_rate':0.001,
-        'batch_size':256,
-        'iterations':5,
+        'batch_size':10,
+        'iterations':1,
         'has_positionalembedding': args.has_positionalembedding,
         'max_position': args.max_position,
         'is_negsample':True,
@@ -138,8 +139,9 @@ def main():
 
     sess.run(init)
     saver = tf.train.Saver(variables_to_restore)
-    saver.restore(sess, "Data/Models/generation_model_t4/model_nextitnet_transfer_pretrain.ckpt")
+    saver.restore(sess, os.path.join(path, 'T4', 'pretrain') + "/model_nextitnet_transfer.ckpt")
     saver_ft = tf.train.Saver()
+
     source_item_embedding = itemrec.dilate_input
     source_item_embedding = tf.reduce_mean(source_item_embedding[:, -1:, :], 1)  # use the last token
     embedding_size = tf.shape(source_item_embedding)[-1]
@@ -248,11 +250,11 @@ def main():
     #print("accuracy:", accuracy)
 
     # Metrics evaluation
-    metric_evaluation.Metric_Evaluation({'metric': 'Accuracy', 'metric_values': accuracy, 'iters': iters, 'datapath': args.datapath, 'task': 'T4', 'mode': 'finetune'})
+    metric_evaluation.Metric_Evaluation({'metric': 'Accuracy', 'metric_values': accuracy, 'iters': iters, 'datapath': args.datapath, 'task': 'T4', 'mode': 'finetune', 'path' : args.path})
 
-    save_path = saver_ft.save(sess,"Data/Models/generation_model_finetune_t4/model_nextitnet_transfer_pretrain.ckpt".format(iter, numIters))
+    save_path = saver_ft.save(sess, os.path.join(path, 'T4', 'finetune') + "/model_nextitnet_transfer.ckpt".format(iter, numIters))
     print("Save models done!")
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1])

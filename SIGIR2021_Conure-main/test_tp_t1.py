@@ -12,7 +12,8 @@ import config
 import sys
 
 
-def main():
+def main(path, case, extention, prune_percentage):
+    
     # Define arguments
     print("Defining arguments...")
     parser = argparse.ArgumentParser()
@@ -20,7 +21,7 @@ def main():
                         help='Sample from top k predictions')
     parser.add_argument('--beta1', type=float, default=0.9,
                         help='hyperpara-Adam')
-    parser.add_argument('--datapath', type=str, default='Data/Session/original_desen_pretrain_3.csv',
+    parser.add_argument('--datapath', type=str, default='Data/Session/original_desen_pretrain_2.csv',
                         help='data path')
     parser.add_argument('--datapath_index', type=str, default='Data/Session/index.csv',
                         help='data path')
@@ -34,8 +35,14 @@ def main():
                         help='whether contains positional embedding before performing cnnn')
     parser.add_argument('--max_position', type=int, default=1000,
                          help='maximum number of for positional embedding, it has to be larger than the sequence lens')
-
+    parser.add_argument('--path', type=str, default=path)
+    parser.add_argument('--case', type=int, default=case)
+    parser.add_argument('--extention', type=int, default=extention)
+    parser.add_argument('--prune_percentage', type=float, default=prune_percentage)
     args = parser.parse_args()
+
+    # Resetting graph
+    tf.reset_default_graph()
 
     # Load Data using data_loader_t1.py
     print("Loading data...")
@@ -45,11 +52,10 @@ def main():
     bigemb= dl.embed_len
 
     #Doing Data analysis
-    data_analysis.Data_Analysis({'data': all_samples,'datapath': args.datapath, 'task': 'T1'})
+    data_analysis.Data_Analysis({'data': all_samples,'datapath': args.datapath, 'task': 'T1', 'path': args.path})
 
     # Randomly shuffle data
     print("Randomly shuffling data...")
-    np.random.seed(10)
     shuffle_indices = np.random.permutation(np.arange(len(all_samples)))
     all_samples = all_samples[shuffle_indices]
 
@@ -66,8 +72,8 @@ def main():
         'dilations': [1,4,1,4,1,4,1,4,],
         'kernel_size': 3,
         'learning_rate':0.001,
-        'batch_size':256,
-        'iterations':5,
+        'batch_size':10,
+        'iterations':1,
         'has_positionalembedding': args.has_positionalembedding,
         'max_position': args.max_position,
         'is_negsample':True,
@@ -79,7 +85,7 @@ def main():
     itemrec = generator_recsys.NextItNet_Decoder(model_para)
     itemrec.train_graph(model_para['is_negsample'], ispre=True)
     optimizer = tf.train.AdamOptimizer(model_para['learning_rate'], beta1=args.beta1).minimize(itemrec.loss)
-    itemrec.save_impwei(reuse=True) # save important weight
+    itemrec.save_impwei(case, extention, prune_percentage, reuse=True) # save important weight
     itemrec.predict_graph(model_para['is_negsample'],reuse=True, ispre=True)
 
     tf.add_to_collection("dilate_input", itemrec.dilate_input)
@@ -161,18 +167,12 @@ def main():
                    
             batch_no += 1
             numIters += 1
-    
-    # Print Metrics Matrix
-    #print("mrr5:", mrr5)
-    #print("hit5:", hit5)
-    #print("ndcg5:", ndcg5)
-    #print("accuracy:", accuracy)
 
     # Metrics evaluation
-    metric_evaluation.Metric_Evaluation({'metric': 'MRR5', 'metric_values': mrr5, 'iters': iters, 'datapath': args.datapath, 'task': 'T1', 'mode': 'pretrain'})
-    metric_evaluation.Metric_Evaluation({'metric': 'HIT5', 'metric_values': hit5, 'iters': iters, 'datapath': args.datapath, 'task': 'T1', 'mode': 'pretrain'})
-    metric_evaluation.Metric_Evaluation({'metric': 'NDCG5', 'metric_values': ndcg5, 'iters': iters, 'datapath': args.datapath, 'task': 'T1', 'mode': 'pretrain'})
-    metric_evaluation.Metric_Evaluation({'metric': 'Accuracy', 'metric_values': accuracy, 'iters': iters, 'datapath': args.datapath, 'task': 'T1', 'mode': 'pretrain'})
+    metric_evaluation.Metric_Evaluation({'metric': 'MRR5', 'metric_values': mrr5, 'iters': iters, 'datapath': args.datapath, 'task': 'T1', 'mode': 'pretrain', 'path' : args.path})
+    metric_evaluation.Metric_Evaluation({'metric': 'HIT5', 'metric_values': hit5, 'iters': iters, 'datapath': args.datapath, 'task': 'T1', 'mode': 'pretrain', 'path' : args.path})
+    metric_evaluation.Metric_Evaluation({'metric': 'NDCG5', 'metric_values': ndcg5, 'iters': iters, 'datapath': args.datapath, 'task': 'T1', 'mode': 'pretrain', 'path' : args.path})
+    metric_evaluation.Metric_Evaluation({'metric': 'Accuracy', 'metric_values': accuracy, 'iters': iters, 'datapath': args.datapath, 'task': 'T1', 'mode': 'pretrain', 'path' : args.path})
 
     # After training – Save the model
     _mask_val_list = sess.run(itemrec.mask_val_list)
@@ -197,9 +197,9 @@ def main():
     initialize_op = tf.variables_initializer(unitialized_vars)
     sess.run(initialize_op)
     saver = tf.train.Saver()
-    save_path = saver.save(sess, "Data/Models/generation_model_t1/model_nextitnet_transfer_pretrain.ckpt".format(iter, numIters))
+    save_path = saver.save(sess, os.path.join(path, 'T1', 'pretrain') + "/model_nextitnet_transfer.ckpt".format(iter, numIters))
     print("Save models done!")
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[4])

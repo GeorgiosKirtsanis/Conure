@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import pandas as pd
 
 class Data_Analysis:
     def __init__(self, options):
@@ -9,6 +10,7 @@ class Data_Analysis:
         data = options['data']
         datapath = options['datapath']
         task = options['task']
+        path = options['path']
 
         #Creating data_analysis matrix
         data_analysis = np.zeros(10)
@@ -51,15 +53,12 @@ class Data_Analysis:
         plt.title(title)
 
         #Creating Dictionaries and files
-        for iteration in range(1, 6):
-            script_dir = os.path.dirname(__file__)
-            results_dir = os.path.join(script_dir, 'Data/Results/' + str(iteration) + '/' + task + '/')
-            if not os.path.isdir(results_dir):
-                os.makedirs(results_dir)
-
-                sample_file_name = task + '_data_analysis'
-                full_file_name = results_dir + sample_file_name
+        results_dir = os.path.join(path, task)
+        if not os.path.isdir(results_dir):
+            os.makedirs(results_dir)
+        full_file_name = os.path.join(results_dir, 'data_analysis')
                 
-                #Saving Figure
-                plt.savefig(full_file_name)
-                break
+        #Saving Figure and csv
+        plt.savefig(full_file_name)
+        df = pd.DataFrame(data_analysis).T
+        df.to_csv(full_file_name + '.csv', index=False, header=False)

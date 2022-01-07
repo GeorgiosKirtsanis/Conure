@@ -75,7 +75,7 @@ class NextItNet_Decoder:
         return dilate_input
 
     #saving important weights
-    def save_impwei(self,mask_var,weight, curtaskID, reuse=False):
+    def save_impwei(self,mask_var,weight, curtaskID, case, extention, prune_percentage, reuse=False):
             if reuse:
                 tf.get_variable_scope().reuse_variables()
             init_zeros = tf.zeros_initializer()
@@ -128,22 +128,88 @@ class NextItNet_Decoder:
                     dilated_conv2 = [v for v in weight if
                                      v.name.find("conv2") != -1 and v.name.find(mask_name_layid_dilation) != -1][0]
 
+
                     mask_conv1_ = tf.abs(frozen_matrix_conv1 - 1)
                     dilated_conv1_norm = tf.abs(dilated_conv1*mask_conv1_)
-                    dilated_conv1_onedim = tf.reshape(dilated_conv1_norm, [kernel_num])
-                    top_k_dilated_conv1 = tf.nn.top_k(dilated_conv1_onedim, cutoff_rank + 1).values[cutoff_rank]
-
                     one = tf.ones_like(dilated_conv1_norm)
                     zero = tf.zeros_like(dilated_conv1_norm)
-                    mask_dilated_conv1 = tf.where(dilated_conv1_norm < top_k_dilated_conv1, x=zero, y=one)
-                    mask_conv2_ = tf.abs(frozen_matrix_conv2 - 1)
+                    dilated_conv1_onedim = tf.reshape(dilated_conv1_norm, [kernel_num])
 
+                    if case == 0:
+                        top_k_dilated_conv1 = tf.nn.top_k(dilated_conv1_onedim, cutoff_rank + 1).values[cutoff_rank]
+                        mask_dilated_conv1 = tf.where(dilated_conv1_norm < top_k_dilated_conv1, x=zero, y=one)
+
+                    elif case == 1:
+                        top_k_dilated_conv1 = tf.nn.top_k(dilated_conv1_onedim, cutoff_rank + 1 + extention).values[cutoff_rank + extention]
+                        mask_dilated_conv1_important = tf.where(dilated_conv1_norm < top_k_dilated_conv1, x=zero, y=one)
+                        random_mask = tf.random_uniform(shape = dilated_conv1.shape)
+                        mask_dilated_conv1 = tf.where(random_mask < prune_percentage, x=zero, y=mask_dilated_conv1_important)
+
+                    elif case == 2:
+                        top_k_dilated_conv1_high_important = tf.nn.top_k(dilated_conv1_onedim, cutoff_rank + 1 + extention).values[cutoff_rank]
+                        mask_dilated_conv1_high_important = tf.where(dilated_conv1_norm < top_k_dilated_conv1_high_important, x=zero, y=one)
+                        
+                        top_k_dilated_conv1_medium_important = tf.nn.top_k(dilated_conv1_onedim, cutoff_rank + 1 + extention).values[cutoff_rank + extention]
+                        mask_dilated_conv1_medium_important = tf.where(((dilated_conv1_norm < top_k_dilated_conv1_high_important) & (dilated_conv1_norm >= top_k_dilated_conv1_medium_important)), x=one, y=zero)
+                        random_mask = tf.random_uniform(shape = dilated_conv1.shape)
+                        mask_dilated_conv1_medium_important_pruned = tf.where(random_mask < prune_percentage, x=zero, y=mask_dilated_conv1_medium_important)
+
+                        top_k_dilated_conv1 = mask_dilated_conv1_medium_important
+                        mask_dilated_conv1 = tf.add(mask_dilated_conv1_high_important, mask_dilated_conv1_medium_important_pruned)
+
+                    elif case == 3:
+                        top_k_dilated_conv1_high_important = tf.nn.top_k(dilated_conv1_onedim, cutoff_rank + 1 + extention).values[cutoff_rank - 1]
+                        mask_dilated_conv1_high_important = tf.where(dilated_conv1_norm < top_k_dilated_conv1_high_important, x=zero, y=one)
+
+                        top_k_dilated_conv1_medium_important = tf.nn.top_k(dilated_conv1_onedim, cutoff_rank + 1 + extention).values[cutoff_rank + extention]
+                        mask_dilated_conv1_medium_important = tf.where(((dilated_conv1_norm < top_k_dilated_conv1_high_important) & (dilated_conv1_norm >= top_k_dilated_conv1_medium_important)), x=one, y=zero)
+                        random_mask = tf.random_uniform(shape = dilated_conv1.shape)
+                        mask_dilated_conv1_medium_important_pruned = tf.where(random_mask < prune_percentage, x=zero, y=mask_dilated_conv1_medium_important)
+
+                        top_k_dilated_conv1 = mask_dilated_conv1_medium_important
+                        mask_dilated_conv1 = tf.add(mask_dilated_conv1_high_important, mask_dilated_conv1_medium_important_pruned)
+                
+
+                    
+                    mask_conv2_ = tf.abs(frozen_matrix_conv2 - 1)
                     dilated_conv2_norm = tf.abs(dilated_conv2*mask_conv2_)
                     dilated_conv2_onedim = tf.reshape(dilated_conv2_norm, [kernel_num])
-                    top_k_dilated_conv2 = tf.nn.top_k(dilated_conv2_onedim, cutoff_rank + 1).values[
-                        cutoff_rank]  # e.g., 2.3
-                    mask_dilated_conv2 = tf.where(dilated_conv2_norm < top_k_dilated_conv2, x=zero, y=one)
-                    # mask_dilated_conv2 = tf.where(dilated_conv2_norm < top_k_dilated_conv2, x=one, y=zero)
+                    
+                        
+                    if case == 0:
+                        top_k_dilated_conv2 = tf.nn.top_k(dilated_conv2_onedim, cutoff_rank + 1).values[cutoff_rank]
+                        mask_dilated_conv2 = tf.where(dilated_conv2_norm < top_k_dilated_conv2, x=zero, y=one)
+
+                    elif case == 1:
+                        top_k_dilated_conv2 = tf.nn.top_k(dilated_conv2_onedim, cutoff_rank + 1 + extention).values[cutoff_rank + extention]
+                        mask_dilated_conv2_important = tf.where(dilated_conv2_norm < top_k_dilated_conv2, x=zero, y=one)
+                        random_mask = tf.random_uniform(shape = dilated_conv2.shape)
+                        mask_dilated_conv2 = tf.where(random_mask < prune_percentage, x=zero, y=mask_dilated_conv2_important)
+
+                    elif case == 2:
+                        top_k_dilated_conv2_high_important = tf.nn.top_k(dilated_conv2_onedim, cutoff_rank + 1 + extention).values[cutoff_rank]
+                        mask_dilated_conv2_high_important = tf.where(dilated_conv2_norm < top_k_dilated_conv2_high_important, x=zero, y=one)
+                        
+                        top_k_dilated_conv2_medium_important = tf.nn.top_k(dilated_conv2_onedim, cutoff_rank + 1 + extention).values[cutoff_rank + extention]
+                        mask_dilated_conv2_medium_important = tf.where(((dilated_conv2_norm < top_k_dilated_conv2_high_important) & (dilated_conv2_norm >= top_k_dilated_conv2_medium_important)), x=one, y=zero)
+                        random_mask = tf.random_uniform(shape = dilated_conv2.shape)
+                        mask_dilated_conv2_medium_important_pruned = tf.where(random_mask < prune_percentage, x=zero, y=mask_dilated_conv2_medium_important)
+
+                        top_k_dilated_conv2 = mask_dilated_conv2_medium_important
+                        mask_dilated_conv2 = tf.add(mask_dilated_conv2_high_important, mask_dilated_conv2_medium_important_pruned)
+
+                    elif case == 3:
+                        top_k_dilated_conv2_high_important = tf.nn.top_k(dilated_conv2_onedim, cutoff_rank + 1 + extention).values[cutoff_rank - 1]
+                        mask_dilated_conv2_high_important = tf.where(dilated_conv2_norm < top_k_dilated_conv2_high_important, x=zero, y=one)
+
+                        top_k_dilated_conv2_medium_important = tf.nn.top_k(dilated_conv2_onedim, cutoff_rank + 1 + extention).values[cutoff_rank + extention]
+                        mask_dilated_conv2_medium_important = tf.where(((dilated_conv2_norm < top_k_dilated_conv2_high_important) & (dilated_conv2_norm >= top_k_dilated_conv2_medium_important)), x=one, y=zero)
+                        random_mask = tf.random_uniform(shape = dilated_conv2.shape)
+                        mask_dilated_conv2_medium_important_pruned = tf.where(random_mask < prune_percentage, x=zero, y=mask_dilated_conv2_medium_important)
+
+                        top_k_dilated_conv2 = mask_dilated_conv2_medium_important
+                        mask_dilated_conv2 = tf.add(mask_dilated_conv2_high_important, mask_dilated_conv2_medium_important_pruned)
+                
 
                     self.mask_val_list_task.append(mask_dilated_conv1)
                     self.mask_val_list_task.append(mask_dilated_conv2)
