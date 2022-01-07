@@ -41,7 +41,7 @@ def main(path, case, extention, prune_percentage):
                         help='Sample from top k predictions')
     parser.add_argument('--beta1', type=float, default=0.9,
                         help='hyperpara-Adam')
-    parser.add_argument('--datapath', type=str, default='Data/Session/original_desen_finetune_like_nouserID_2.csv ',
+    parser.add_argument('--datapath', type=str, default='Data/Session/original_desen_finetune_like_nouserID.csv ',
                         help='data path')
     parser.add_argument('--datapath_index', type=str, default='Data/Session/index.csv',
                         help='data path')
@@ -98,8 +98,8 @@ def main(path, case, extention, prune_percentage):
         'dilations': [1,4,1,4,1,4,1,4,],
         'kernel_size': 3,
         'learning_rate':0.001,
-        'batch_size':10,
-        'iterations':1,
+        'batch_size':256,
+        'iterations':3,
         'has_positionalembedding': args.has_positionalembedding,
         'max_position': args.max_position,
         'is_negsample':True, #False denotes using full softmax
