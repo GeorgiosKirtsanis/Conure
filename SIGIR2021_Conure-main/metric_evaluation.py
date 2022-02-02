@@ -16,20 +16,20 @@ class Metric_Evaluation:
         path = options['path']
         
         #Creating Figure
-        fig = plt.figure(figsize = (10, 5))
-        plt.plot(iters, metric_values)
-        plt.xlabel("Steps")
-        plt.ylabel(metric)
-        title = task + " " + mode + ' | ' + metric + " per step for test set of " + datapath
-        plt.title(title)
+        # fig = plt.figure(figsize = (10, 5))
+        # plt.plot(iters, metric_values)
+        # plt.xlabel("Steps")
+        # plt.ylabel(metric)
+        # title = task + " " + mode + ' | ' + metric + " per step for test set of " + datapath
+        # plt.title(title)
 
         results_dir = os.path.join(path, task, mode, 'metrics')
-        if not os.path.isdir(results_dir):
+        if not os.path.exists(results_dir):
             os.makedirs(results_dir)
         full_file_name = os.path.join(results_dir, metric)
 
         #Saving Figure
-        plt.savefig(full_file_name)
+        # plt.savefig(full_file_name)
         #Saving Array to csv
         df = pd.DataFrame(metric_values).T
         df.to_csv(full_file_name + '.csv', index=False, header=False)

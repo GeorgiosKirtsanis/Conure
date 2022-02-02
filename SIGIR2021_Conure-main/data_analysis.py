@@ -54,7 +54,7 @@ class Data_Analysis:
 
         #Creating Dictionaries and files
         results_dir = os.path.join(path, task)
-        if not os.path.isdir(results_dir):
+        if not os.path.exists(results_dir):
             os.makedirs(results_dir)
         full_file_name = os.path.join(results_dir, 'data_analysis')
                 

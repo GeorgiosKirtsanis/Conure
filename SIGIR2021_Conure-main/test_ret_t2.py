@@ -70,7 +70,7 @@ def main(path):
                         help='Sample from top k predictions')
     parser.add_argument('--beta1', type=float, default=0.9,
                         help='hyperpara-Adam')
-    parser.add_argument('--datapath', type=str, default='Data/Session/original_desen_finetune_click_nouserID.csv ',
+    parser.add_argument('--datapath', type=str, default='Data/Session/original_desen_finetune_click_nouserID.csv',
                         help='data path')
     parser.add_argument('--datapath_index', type=str, default='Data/Session/index.csv',
                         help='data path')
@@ -123,7 +123,7 @@ def main(path):
         'kernel_size': 3,
         'learning_rate':0.001,
         'batch_size':256,
-        'iterations':3,
+        'iterations':4,
         'has_positionalembedding': args.has_positionalembedding,
         'max_position': args.max_position,
         'is_negsample':True, #False denotes using full softmax
@@ -212,6 +212,7 @@ def main(path):
     for iter in range(model_para['iterations']):
         batch_no = 0
         batch_size = model_para['batch_size']
+        losses = []
         while (batch_no + 1) * batch_size < train_set.shape[0]:
             iters.append(numIters)
             item_batch = train_set[batch_no * batch_size: (batch_no + 1) * batch_size, :]
@@ -222,57 +223,65 @@ def main(path):
             neg_target = np.array(neg_target + 1)
             neg_target = neg_target[:, np.newaxis]
             _, loss_out = sess.run([optimizer, loss], feed_dict={itemrec.itemseq_input: item_batch, itemseq_input_target_pos: pos_target, itemseq_input_target_neg: neg_target})
-
-            if numIters % args.eval_iter == 0:
-                print("-------------------------------------------------------train1")
-                print("LOSS: {}\tITER: {}\tBATCH_NO: {}\t STEP:{}\t total_batches:{}".format(
-                    loss_out, iter, batch_no, numIters, train_set.shape[0] / batch_size))
-                
-                batch_no_test = 0
-                batch_size_test = batch_size
-                curr_preds_5=[]
-                rec_preds_5=[]
-                ndcg_preds_5=[]
-                accuracy_pred=[]
-                while (batch_no_test + 1) * batch_size_test < valid_set.shape[0]:
-                    item_batch = valid_set[batch_no_test * batch_size_test: (batch_no_test + 1) * batch_size_test, :]
-                    pos_batch = item_batch[:, -1]  # [3 6] used for negative sampling
-                    [top_k_batch] = sess.run([top_k_test], feed_dict={itemrec.itemseq_input: item_batch})
-                    top_k = np.squeeze(top_k_batch[1])  # remove one dimension since e.g., [[[1,2,4]],[[34,2,4]]]-->[[1,2,4],[34,2,4]]
-                    for i in range(top_k.shape[0]):
-                        top_k_per_batch = top_k[i]
-                        predictmap = {ch: i for i, ch in enumerate(top_k_per_batch)}
-                        true_item = pos_batch[i]
-                        rank = predictmap.get(true_item)
-                        if rank ==None:
-                            curr_preds_5.append(0.0)
-                            rec_preds_5.append(0.0)
-                            ndcg_preds_5.append(0.0)
-                            accuracy_pred.append(0.0)
-                        else:
-                            if rank == 1:
-                                accuracy_pred.append(1.0)
-                            else:
-                                accuracy_pred.append(0.0)
-                            MRR_5 = 1.0/(rank+1)
-                            Rec_5=1.0
-                            ndcg_5 = 1.0 / math.log(rank + 2, 2)
-                            curr_preds_5.append(MRR_5)
-                            rec_preds_5.append(Rec_5)
-                            ndcg_preds_5.append(ndcg_5)
-                    batch_no_test += 1
-                
-                print("mrr_5:", sum(curr_preds_5) / float(len(curr_preds_5)), 
-                      "hit_5:", sum(rec_preds_5) / float(len(rec_preds_5)),   
-                      "ndcg_5:", sum(ndcg_preds_5) / float(len(ndcg_preds_5)),
-                      "accuracy:", sum(accuracy_pred) / float(len(accuracy_pred)))
-                mrr5.append(sum(curr_preds_5) / float(len(curr_preds_5)))
-                hit5.append(sum(rec_preds_5) / float(len(rec_preds_5)))
-                ndcg5.append(sum(ndcg_preds_5) / float(len(ndcg_preds_5)))
-                accuracy.append(sum(accuracy_pred) / float(len(accuracy_pred)))
-
+            losses.append(loss_out)
+            
             batch_no += 1
             numIters += 1
+            
+        # print("-------------------------------------------------------train1")
+        # print("LOSS: {}\tITER: {}\t".format(
+        #     sum(losses) / len(losses), iter))
+            
+        #     if numIters % args.eval_iter == 0:
+        #         print("-------------------------------------------------------train1")
+        #         print("LOSS: {}\tITER: {}\tBATCH_NO: {}\t STEP:{}\t total_batches:{}".format(
+        #             loss_out, iter, batch_no, numIters, train_set.shape[0] / batch_size))
+                
+        batch_no_test = 0
+        batch_size_test = batch_size
+        curr_preds_5=[]
+        rec_preds_5=[]
+        ndcg_preds_5=[]
+        accuracy_pred=[]
+        while (batch_no_test + 1) * batch_size_test < valid_set.shape[0]:
+            item_batch = valid_set[batch_no_test * batch_size_test: (batch_no_test + 1) * batch_size_test, :]
+            pos_batch = item_batch[:, -1]  # [3 6] used for negative sampling
+            [top_k_batch] = sess.run([top_k_test], feed_dict={itemrec.itemseq_input: item_batch})
+            top_k = np.squeeze(top_k_batch[1])  # remove one dimension since e.g., [[[1,2,4]],[[34,2,4]]]-->[[1,2,4],[34,2,4]]
+            for i in range(top_k.shape[0]):
+                top_k_per_batch = top_k[i]
+                predictmap = {ch: i for i, ch in enumerate(top_k_per_batch)}
+                true_item = pos_batch[i]
+                rank = predictmap.get(true_item)
+                if rank ==None:
+                    curr_preds_5.append(0.0)
+                    rec_preds_5.append(0.0)
+                    ndcg_preds_5.append(0.0)
+                    accuracy_pred.append(0.0)
+                else:
+                    if rank == 1:
+                        accuracy_pred.append(1.0)
+                    else:
+                        accuracy_pred.append(0.0)
+                    MRR_5 = 1.0/(rank+1)
+                    Rec_5=1.0
+                    ndcg_5 = 1.0 / math.log(rank + 2, 2)
+                    curr_preds_5.append(MRR_5)
+                    rec_preds_5.append(Rec_5)
+                    ndcg_preds_5.append(ndcg_5)
+            batch_no_test += 1
+        
+        print("mrr_5:", sum(curr_preds_5) / float(len(curr_preds_5)), 
+                "hit_5:", sum(rec_preds_5) / float(len(rec_preds_5)),   
+                "ndcg_5:", sum(ndcg_preds_5) / float(len(ndcg_preds_5)),
+                "accuracy:", sum(accuracy_pred) / float(len(accuracy_pred)))
+        mrr5.append(sum(curr_preds_5) / float(len(curr_preds_5)))
+        hit5.append(sum(rec_preds_5) / float(len(rec_preds_5)))
+        ndcg5.append(sum(ndcg_preds_5) / float(len(ndcg_preds_5)))
+        accuracy.append(sum(accuracy_pred) / float(len(accuracy_pred)))
+
+            # batch_no += 1
+            # numIters += 1
 
     # Print Metrics Matrix
     #print("mrr5:", mrr5)

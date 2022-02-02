@@ -11,13 +11,16 @@ import shutil
 
 def main():
 
-    case = [1, 2, 3]
-    extention = [1, 2, 3]
-    prune_percentage = [0.1, 0.15, 0.25, 0.3, 0.5, 0.6, 0.75]
+    case = [0]
+    extention= [1]
+    prune_percentage= [0.1]
+    # case = [1, 2, 3]
+    # extention = [1, 2, 3]
+    # prune_percentage = [0.1, 0.15, 0.25, 0.3, 0.5, 0.6, 0.75]
 
-    dirpath = os.path.join('Results')
-    if os.path.exists(dirpath) and os.path.isdir(dirpath):
-        shutil.rmtree(dirpath)
+    # dirpath = os.path.join('Results')
+    # if os.path.exists(dirpath) and os.path.isdir(dirpath):
+    #     shutil.rmtree(dirpath)
 
     for c in case:
         model = 1
@@ -26,7 +29,7 @@ def main():
                 
                 # Create path
                 path = 'Results' + '/Case' + str(c) + '/Model'+ str(c) + str(model)
-                if not os.path.isdir(path):
+                if not os.path.exists(path):
                     os.makedirs(path)
 
                 # Open Case_Information file
@@ -41,7 +44,7 @@ def main():
                 # Run tests
                 for test in range (1,6):
                     test_path = os.path.join(path, 'test' + str(test))
-                    if not os.path.isdir(test_path):
+                    if not os.path.exists(test_path):
                         os.makedirs(test_path)
                     test_tp_t1.main(test_path, c, e, pp)
                     test_ret_t1.main(test_path)

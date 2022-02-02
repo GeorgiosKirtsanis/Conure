@@ -73,7 +73,7 @@ def main(path, case, extention, prune_percentage):
         'kernel_size': 3,
         'learning_rate':0.001,
         'batch_size':256,
-        'iterations':3,
+        'iterations':4,
         'has_positionalembedding': args.has_positionalembedding,
         'max_position': args.max_position,
         'is_negsample':True,
@@ -107,66 +107,72 @@ def main(path, case, extention, prune_percentage):
     for iter in range(model_para['iterations']):
         batch_no = 0
         batch_size = model_para['batch_size']
+        losses = []
         while (batch_no + 1) * batch_size <= train_set.shape[0]:
             iters.append(numIters)
             item_batch = train_set[batch_no * batch_size: (batch_no + 1) * batch_size, :] 
             _, loss = sess.run([optimizer, itemrec.loss], feed_dict={itemrec.itemseq_input: item_batch})
             
-            if numIters % args.eval_iter == 0:
-                print("-------------------------------------------------------train1")
-                print("LOSS: {}\tITER: {}\tBATCH_NO: {}\t STEP:{}\t total_batches:{}".format(
-                    loss, iter, batch_no, numIters, train_set.shape[0] / batch_size))
-                print("-------------------------------------------------------test1")
-                if (batch_no + 1) * batch_size < valid_set.shape[0]:
-                    item_batch = valid_set[(batch_no) * batch_size: (batch_no + 1) * batch_size, :]
-                loss = sess.run([itemrec.loss_test], feed_dict={itemrec.input_predict: item_batch})
-                print("LOSS: {}\tITER: {}\tBATCH_NO: {}\t STEP:{}\t total_batches:{}".format(
-                    loss[0], iter, batch_no, numIters, valid_set.shape[0] / batch_size))
-
-                batch_no_test = 0
-                batch_size_test = batch_size
-                curr_preds_5=[]
-                rec_preds_5=[]
-                ndcg_preds_5=[]
-                accuracy_pred=[]
-                while (batch_no_test + 1) * batch_size_test <= valid_set.shape[0]:
-                    item_batch = valid_set[batch_no_test * batch_size_test: (batch_no_test + 1) * batch_size_test, :]
-                    [top_k_batch] = sess.run([itemrec.top_k], feed_dict={itemrec.input_predict: item_batch,})
-                    top_k=np.squeeze(top_k_batch[1])
-                    for bi in range(top_k.shape[0]):
-                        pred_items_5 = top_k[bi][:5]
-                        true_item=item_batch[bi][-1]
-                        predictmap_5={ch : i for i, ch in enumerate(pred_items_5)}
-                        rank_5=predictmap_5.get(true_item)
-                        if rank_5 ==None:
-                            curr_preds_5.append(0.0)
-                            rec_preds_5.append(0.0)
-                            ndcg_preds_5.append(0.0)
-                            accuracy_pred.append(0.0)
-                        else:
-                            if rank_5 == 1:
-                                accuracy_pred.append(1.0)
-                            else:
-                                accuracy_pred.append(0.0)
-                            MRR_5 = 1.0/(rank_5+1)
-                            Rec_5=1.0
-                            ndcg_5 = 1.0 / math.log(rank_5 + 2, 2)
-                            curr_preds_5.append(MRR_5)
-                            rec_preds_5.append(Rec_5)
-                            ndcg_preds_5.append(ndcg_5)
-                    batch_no_test += 1
-                
-                print("mrr_5:", sum(curr_preds_5) / float(len(curr_preds_5)), 
-                      "hit_5:", sum(rec_preds_5) / float(len(rec_preds_5)),   
-                      "ndcg_5:", sum(ndcg_preds_5) / float(len(ndcg_preds_5)),
-                      "accuracy:", sum(accuracy_pred) / float(len(accuracy_pred)))
-                mrr5.append(sum(curr_preds_5) / float(len(curr_preds_5)))
-                hit5.append(sum(rec_preds_5) / float(len(rec_preds_5)))
-                ndcg5.append(sum(ndcg_preds_5) / float(len(ndcg_preds_5)))
-                accuracy.append(sum(accuracy_pred) / float(len(accuracy_pred)))
-                   
+            losses.append(loss)
+            
             batch_no += 1
             numIters += 1
+            
+        # if numIters % args.eval_iter == 0:
+        print("-------------------------------------------------------train1")
+        print("LOSS: {}\tITER: {}\t".format(
+            sum(losses) / len(losses), iter))
+        print("-------------------------------------------------------test1")
+        
+        if (batch_no + 1) * batch_size < valid_set.shape[0]:
+            item_batch = valid_set[(batch_no) * batch_size: (batch_no + 1) * batch_size, :]
+        loss = sess.run([itemrec.loss_test], feed_dict={itemrec.input_predict: item_batch})
+        print("LOSS: {}\tITER: {}".format(
+            loss[0], iter))
+
+        batch_no_test = 0
+        batch_size_test = batch_size
+        curr_preds_5=[]
+        rec_preds_5=[]
+        ndcg_preds_5=[]
+        accuracy_pred=[]
+        while (batch_no_test + 1) * batch_size_test <= valid_set.shape[0]:
+            item_batch = valid_set[batch_no_test * batch_size_test: (batch_no_test + 1) * batch_size_test, :]
+            [top_k_batch] = sess.run([itemrec.top_k], feed_dict={itemrec.input_predict: item_batch,})
+            top_k=np.squeeze(top_k_batch[1])
+            for bi in range(top_k.shape[0]):
+                pred_items_5 = top_k[bi][:5]
+                true_item=item_batch[bi][-1]
+                predictmap_5={ch : i for i, ch in enumerate(pred_items_5)}
+                rank_5=predictmap_5.get(true_item)
+                if rank_5 ==None:
+                    curr_preds_5.append(0.0)
+                    rec_preds_5.append(0.0)
+                    ndcg_preds_5.append(0.0)
+                    accuracy_pred.append(0.0)
+                else:
+                    if rank_5 == 1:
+                        accuracy_pred.append(1.0)
+                    else:
+                        accuracy_pred.append(0.0)
+                    MRR_5 = 1.0/(rank_5+1)
+                    Rec_5=1.0
+                    ndcg_5 = 1.0 / math.log(rank_5 + 2, 2)
+                    curr_preds_5.append(MRR_5)
+                    rec_preds_5.append(Rec_5)
+                    ndcg_preds_5.append(ndcg_5)
+            batch_no_test += 1
+        
+        print("mrr_5:", sum(curr_preds_5) / float(len(curr_preds_5)), 
+                "hit_5:", sum(rec_preds_5) / float(len(rec_preds_5)),   
+                "ndcg_5:", sum(ndcg_preds_5) / float(len(ndcg_preds_5)),
+                "accuracy:", sum(accuracy_pred) / float(len(accuracy_pred)))
+        mrr5.append(sum(curr_preds_5) / float(len(curr_preds_5)))
+        hit5.append(sum(rec_preds_5) / float(len(rec_preds_5)))
+        ndcg5.append(sum(ndcg_preds_5) / float(len(ndcg_preds_5)))
+        accuracy.append(sum(accuracy_pred) / float(len(accuracy_pred)))
+                   
+            
 
     # Metrics evaluation
     metric_evaluation.Metric_Evaluation({'metric': 'MRR5', 'metric_values': mrr5, 'iters': iters, 'datapath': args.datapath, 'task': 'T1', 'mode': 'pretrain', 'path' : args.path})

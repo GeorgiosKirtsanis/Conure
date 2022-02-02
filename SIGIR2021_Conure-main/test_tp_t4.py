@@ -101,7 +101,7 @@ def main(path, case, extention, prune_percentage):
         'kernel_size': 3,
         'learning_rate':0.001,
         'batch_size':256,
-        'iterations':3,
+        'iterations':4,
         'has_positionalembedding': args.has_positionalembedding,
         'max_position': args.max_position,
         'is_negsample':True, # False denotes using full softmax
@@ -194,6 +194,7 @@ def main(path, case, extention, prune_percentage):
     for iter in range(model_para['iterations']):
         batch_no = 0
         batch_size = model_para['batch_size']
+        losses = []
         while (batch_no + 1) * batch_size < train_set.shape[0]:
             iters.append(numIters)
             item_batch = train_set[batch_no * batch_size: (batch_no + 1) * batch_size, :]
@@ -203,35 +204,45 @@ def main(path, case, extention, prune_percentage):
             neg_target = np.array([[random_neq(1, targets_len, s)] for s in pos_batch])
             _, loss_out = sess.run([optimizer, loss], feed_dict={itemrec.itemseq_input: item_batch, itemseq_input_target_pos: pos_target, itemseq_input_target_neg: neg_target})
 
-            if numIters % args.eval_iter == 0:
-                print("-------------------------------------------------------train1")
-                print("LOSS: {}\tITER: {}\tBATCH_NO: {}\t STEP:{}\t total_batches:{}".format(loss_out, iter, batch_no, numIters, train_set.shape[0] / batch_size))
-               
-                batch_no_test = 0
-                batch_size_test = batch_size
-                curr_hits=[]
-                while (batch_no_test + 1) * batch_size_test < valid_set.shape[0]:
-                    item_batch = valid_set[batch_no_test * batch_size_test: (batch_no_test + 1) * batch_size_test, :]
-                    pos_batch = item_batch[:, -1]  # [3 6] used for negative sampling
-                    source_batch = item_batch[:, :-2]
-                    pos_target = item_batch[:, -1:]  # [[3][6]]
-                    neg_target = np.array([random_negs(1, targets_len, negtive_samples, s) for s in pos_batch])
-                    target = np.array(np.concatenate([neg_target, pos_target], 1))
-                    [top_k_batch] = sess.run([top_k_test], feed_dict={itemrec.itemseq_input: item_batch, itemseq_input_target_label: target})
-                    top_k = np.squeeze(top_k_batch[1])  # remove one dimension since e.g., [[[1,2,4]],[[34,2,4]]]-->[[1,2,4],[34,2,4]]
-                    for i in range(top_k.shape[0]):
-                        top_k_per_batch = top_k[i]
-                        if negtive_samples == top_k_per_batch:  # we just need to check whether index 0 (i.e., the ground truth is in the top-k)
-                            curr_hits.append(1.0)
-                        else:
-                            curr_hits.append(0.0)
-                    batch_no_test += 1
-                
-                print("accuracy:", sum(curr_hits) / float(len(curr_hits)))
-                accuracy.append(sum(curr_hits) / float(len(curr_hits)))
-                   
+            losses.append(loss_out)
             batch_no += 1
             numIters += 1
+            
+        print("-------------------------------------------------------train1")
+        print("LOSS: {}\tITER: {}\t".format(
+            sum(losses) / len(losses), iter))
+        
+        
+            
+            # if numIters % args.eval_iter == 0:
+            #     print("-------------------------------------------------------train1")
+            #     print("LOSS: {}\tITER: {}\tBATCH_NO: {}\t STEP:{}\t total_batches:{}".format(loss_out, iter, batch_no, numIters, train_set.shape[0] / batch_size))
+               
+        batch_no_test = 0
+        batch_size_test = batch_size
+        curr_hits=[]
+        while (batch_no_test + 1) * batch_size_test < valid_set.shape[0]:
+            item_batch = valid_set[batch_no_test * batch_size_test: (batch_no_test + 1) * batch_size_test, :]
+            pos_batch = item_batch[:, -1]  # [3 6] used for negative sampling
+            source_batch = item_batch[:, :-2]
+            pos_target = item_batch[:, -1:]  # [[3][6]]
+            neg_target = np.array([random_negs(1, targets_len, negtive_samples, s) for s in pos_batch])
+            target = np.array(np.concatenate([neg_target, pos_target], 1))
+            [top_k_batch] = sess.run([top_k_test], feed_dict={itemrec.itemseq_input: item_batch, itemseq_input_target_label: target})
+            top_k = np.squeeze(top_k_batch[1])  # remove one dimension since e.g., [[[1,2,4]],[[34,2,4]]]-->[[1,2,4],[34,2,4]]
+            for i in range(top_k.shape[0]):
+                top_k_per_batch = top_k[i]
+                if negtive_samples == top_k_per_batch:  # we just need to check whether index 0 (i.e., the ground truth is in the top-k)
+                    curr_hits.append(1.0)
+                else:
+                    curr_hits.append(0.0)
+            batch_no_test += 1
+        
+        print("accuracy:", sum(curr_hits) / float(len(curr_hits)))
+        accuracy.append(sum(curr_hits) / float(len(curr_hits)))
+                   
+            # batch_no += 1
+            # numIters += 1
 
     # Metrics evaluation
     metric_evaluation.Metric_Evaluation({'metric': 'Accuracy', 'metric_values': accuracy, 'iters': iters, 'datapath': args.datapath, 'task': 'T4', 'mode': 'pretrain', 'path': args.path})
